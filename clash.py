@@ -13,16 +13,13 @@ import matplotlib.cm as cm
 import seaborn as sns
 from astropy.io import ascii, fits
 from astropy.wcs import wcs
-from mpl_toolkits.mplot3d import Axes3D
 from matplotlib import cm
 from matplotlib.ticker import LinearLocator, FormatStrFormatter
 from scipy.interpolate import interp2d
 import matplotlib.mlab as mlab
 import scipy, pylab
 import rpy2
-from rpy2.robjects.packages import importr
-import rpy2.robjects as ro
-from rpy2.robjects import pandas2ri
+import cubehelix
 import math
 from pysextractor import SExtractor
 
@@ -105,14 +102,13 @@ for i_object in range(len(df_cat)):
     df = pd.DataFrame()
     df_sky = pd.DataFrame()
     seg_sex = segmap[interval[0]:interval[1], interval[2]:interval[3]]
-    print('objeto: %d' %i_object)
+    print(df_cat['num'])
 
     for i_gal in range(len(df_fit)):
-        print('banda: %s' %df_fit['filter'][i_gal])
+        #print('banda: %s' %df_fit['filter'][i_gal])
         f_sdss = fits.open('data/frame-%s-%s' %(df_fit['filter'][i_gal],
                                                  df_fit['name'][i_gal]))
         img = get_image(f_sdss)
-#        a = int(interval[0])
         img_cut = img[interval[0]:interval[1], interval[2]:interval[3]]
         plt.figure(1)
         plt.clf()
@@ -124,6 +120,9 @@ for i_object in range(len(df_cat)):
         table = np.column_stack(( xx.flatten(), yy.flatten(), img_cut.flatten() ))
         temp = pd.DataFrame(table, columns=['x','y',band])
         df = pd.concat([df,temp], axis=1)
+#        df['x'] = temp['x'].copy()
+#        df['y'] = temp['y'].copy()
+#        df[band] = temp[band].copy()
 
         sky_r = fits.open('data/frame-%s-%s' %(df_fit['filter'][i_gal],
                                                  df_fit['name'][i_gal]))
@@ -140,8 +139,54 @@ for i_object in range(len(df_cat)):
         table_sky = np.column_stack(( xxc.flatten(), yyc.flatten(), img_sky.flatten() ))
         temp_sky = pd.DataFrame(table_sky, columns=['x','y',band])
         df_sky = pd.concat([df_sky,temp_sky], axis=1)
+#        df_sky['x'] = temp_sky['x'].copy()
+#        df_sky['y'] = temp_sky['y'].copy()
+#        df_sky[band] = temp_sky[band].copy()
 
-fim = time.time()
-time_proc = fim - ini
-print('')
-print(bcolors.HEADER + 'tempo de processamento: %fs' %time_proc + bcolors.ENDC)
+    df = df.ix[:, [0,1,2,5,8,11,14]]
+    df_sky = df_sky.ix[:, [0,1,2,5,8,11,14]]
+
+    '''
+    Imagem da galaxia, na banda r.
+    '''
+    plt.figure(1)
+    plt.clf()
+    r_sdss = fits.open('data/frame-r-%s' %(df_fit['name'][i_gal]))
+    img_r = get_image(r_sdss)
+    img_cut_r = img_r[interval[0]:interval[1], interval[2]:interval[3]]
+    cx = cubehelix.cmap(reverse=True, start=0., rot=-0.5)
+    imgplot = plt.imshow(100*np.log10(img_cut_r/255), cmap='spectral')
+    #titulo='Galaxy #%s - banda %s' %(df_cat['num'][i_object],df_fit['filter'][11])
+#    plt.title(titulo)
+    plt.colorbar()
+    #figura = 'figures/galaxy_#%s' %df_cat['num'][i_object]
+    #plt.savefig(figura)
+    '''
+    Imagem segmentada da galaxia, na banda r.
+    '''
+    plt.figure(1)
+    plt.clf()
+    cx = cubehelix.cmap(reverse=True, start=0., rot=-0.5)
+    imgplot = plt.imshow(seg_sex, cmap='spectral')
+#    titulo='Segmentation Galaxy #%s - banda %s' %(df_cat['num'][i_object],df_fit['filter'][11])
+#    plt.title(titulo)
+    plt.colorbar()
+#    figura = 'figures/seg_galaxy_#%s' %df_cat['num'][i_object]
+#    plt.savefig(figura)
+
+    '''
+    ================================================================================
+    Salvando os fluxos de cada galaxia em um arquivo txt
+    ================================================================================
+    '''
+    saida_fluxes = 'data/all_band_fluxes_%s.txt' %df_cat['num'][i_object]
+    formats=['%d','%d','%5.4f','%5.4f','%5.4f','%5.4f','%5.4f']
+    headers2='x\ty\tu\tg\tr\ti\tz'
+    np.savetxt(saida_fluxes,df, delimiter='\t',header=headers2, fmt = formats)
+    print('')
+    print('>> Os dados estao em: "%s".' %saida_fluxes)
+
+    fim = time.time()
+    time_proc = fim - ini
+    print('')
+    print(bcolors.HEADER + 'tempo de processamento: %fs' %time_proc + bcolors.ENDC)
