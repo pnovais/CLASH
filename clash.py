@@ -71,11 +71,14 @@ segmap = fits.open('check.fits')[0].data
 df_cat = pd.read_table('py-sextractor.cat', delim_whitespace=True, header=16)
 df_cat.columns = ['num','flux_best','fluxerr_best', 'x','y','flags',
                'fwhm_image', 'flux_iso','mag_isocor','mag_auto',
-              'petro_radius','ISOAREA_IMAGE','ra','dec',
+              'petro_radius','ISO_AREA','ra','dec',
               'fwhm_world','class_star']
 
 #selecao dos objetos que devem ser galaxias
 df_cat = df_cat.ix[(df_cat['fwhm_image'] > 4.5) & (df_cat['mag_auto'] < -7)]
+df_cat = df_cat.reset_index()
+df_cat = df_cat.ix[:,1:15]
+
 '''
 ================================================================================
 Lendo as imagens, em todas as bandas, e gerando um dataframe para cada galaxia
@@ -89,7 +92,8 @@ ATUALIZAR NOME DA BANDA DE SEGMENTACAO
 df = pd.DataFrame()
 df_sky = pd.DataFrame()
 
-for i_object in range(len(df_cat)):
+
+for i_object in range(13,14):
     window_size = 250
     filter_seg = 'rSDSS'
     ra = df_cat['ra']
@@ -102,10 +106,8 @@ for i_object in range(len(df_cat)):
     df = pd.DataFrame()
     df_sky = pd.DataFrame()
     seg_sex = segmap[interval[0]:interval[1], interval[2]:interval[3]]
-    print(df_cat['num'])
 
     for i_gal in range(len(df_fit)):
-        #print('banda: %s' %df_fit['filter'][i_gal])
         f_sdss = fits.open('data/frame-%s-%s' %(df_fit['filter'][i_gal],
                                                  df_fit['name'][i_gal]))
         img = get_image(f_sdss)
@@ -120,9 +122,6 @@ for i_object in range(len(df_cat)):
         table = np.column_stack(( xx.flatten(), yy.flatten(), img_cut.flatten() ))
         temp = pd.DataFrame(table, columns=['x','y',band])
         df = pd.concat([df,temp], axis=1)
-#        df['x'] = temp['x'].copy()
-#        df['y'] = temp['y'].copy()
-#        df[band] = temp[band].copy()
 
         sky_r = fits.open('data/frame-%s-%s' %(df_fit['filter'][i_gal],
                                                  df_fit['name'][i_gal]))
@@ -139,9 +138,6 @@ for i_object in range(len(df_cat)):
         table_sky = np.column_stack(( xxc.flatten(), yyc.flatten(), img_sky.flatten() ))
         temp_sky = pd.DataFrame(table_sky, columns=['x','y',band])
         df_sky = pd.concat([df_sky,temp_sky], axis=1)
-#        df_sky['x'] = temp_sky['x'].copy()
-#        df_sky['y'] = temp_sky['y'].copy()
-#        df_sky[band] = temp_sky[band].copy()
 
     df = df.ix[:, [0,1,2,5,8,11,14]]
     df_sky = df_sky.ix[:, [0,1,2,5,8,11,14]]
@@ -156,11 +152,11 @@ for i_object in range(len(df_cat)):
     img_cut_r = img_r[interval[0]:interval[1], interval[2]:interval[3]]
     cx = cubehelix.cmap(reverse=True, start=0., rot=-0.5)
     imgplot = plt.imshow(100*np.log10(img_cut_r/255), cmap='spectral')
-    #titulo='Galaxy #%s - banda %s' %(df_cat['num'][i_object],df_fit['filter'][11])
-#    plt.title(titulo)
+    titulo='Galaxy #%s - banda r' %(df_cat['num'][i_object])
+    plt.title(titulo)
     plt.colorbar()
-    #figura = 'figures/galaxy_#%s' %df_cat['num'][i_object]
-    #plt.savefig(figura)
+    figura = 'figures/galaxy_#%s' %df_cat['num'][i_object]
+    plt.savefig(figura)
     '''
     Imagem segmentada da galaxia, na banda r.
     '''
@@ -168,11 +164,11 @@ for i_object in range(len(df_cat)):
     plt.clf()
     cx = cubehelix.cmap(reverse=True, start=0., rot=-0.5)
     imgplot = plt.imshow(seg_sex, cmap='spectral')
-#    titulo='Segmentation Galaxy #%s - banda %s' %(df_cat['num'][i_object],df_fit['filter'][11])
-#    plt.title(titulo)
+    titulo='Segmentation Galaxy #%s - banda r' %(df_cat['num'][i_object])
+    plt.title(titulo)
     plt.colorbar()
-#    figura = 'figures/seg_galaxy_#%s' %df_cat['num'][i_object]
-#    plt.savefig(figura)
+    figura = 'figures/seg_galaxy_#%s' %df_cat['num'][i_object]
+    plt.savefig(figura)
 
     '''
     ================================================================================
@@ -186,7 +182,36 @@ for i_object in range(len(df_cat)):
     print('')
     print('>> Os dados estao em: "%s".' %saida_fluxes)
 
-    fim = time.time()
-    time_proc = fim - ini
-    print('')
-    print(bcolors.HEADER + 'tempo de processamento: %fs' %time_proc + bcolors.ENDC)
+    '''
+    ================================================================================
+    Subtraindo o ceu, na banda r
+    ================================================================================
+    '''
+    df_aux=df.ix[:,2:]
+    df_aux1=df.ix[:,:2]
+    df_sky_aux = df_sky.ix[:,2:]
+    df_aux3 = (df_aux - df_sky_aux.mean())
+    df_rss=df_aux1.join(df_aux3)
+
+    """
+    A segmentacao consiste de usar um limiar para separar o objeto do fundo.
+    No nosso caso, usamos limiar = alpha*std_ceu
+    """
+    '''
+    ================================================================================
+    SEGMENTACAO
+    ================================================================================
+    '''
+    #SELECAO DOS PIXEIS ACIMA DO LIMIAR
+    limiar = 2.5*df_sky.r.std()
+    df_seg = df_rss.ix[df_rss['r'] > limiar]
+    print('Pixeis acima do limiar: %d' %len(df_seg))
+    np.savetxt('fof2.txt',df_seg,delimiter='\t')
+
+
+
+
+fim = time.time()
+time_proc = fim - ini
+print('')
+print(bcolors.HEADER + 'tempo de processamento: %fs' %time_proc + bcolors.ENDC)
